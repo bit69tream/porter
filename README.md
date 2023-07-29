@@ -15,9 +15,5 @@ _P.S.: all the examples are made with the help of [sort2video.sh](./sort2video.s
 ## 1
 Source: https://unsplash.com/photos/a-person-standing-on-a-beach-next-to-the-ocean-i0nW-lPiR6w
 
-![](./beach.mp4)
-
 ## 2
 Source: https://unsplash.com/photos/ChO8qDd4syg
-
-![](./evening.mp4)
