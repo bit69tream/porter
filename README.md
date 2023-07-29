@@ -10,6 +10,8 @@ $ porter 69 image.png image.jpg
 ```
 
 # Examples
+_P.S.: all the examples are made with the help of [sort2video.sh](./sort2video.sh) script._
+
 ## 1
 Source: https://unsplash.com/photos/a-person-standing-on-a-beach-next-to-the-ocean-i0nW-lPiR6w
 
