@@ -1,3 +1,4 @@
+use std::path::Path;
 use image::{self, Pixel, Rgba};
 use std::env;
 
@@ -52,7 +53,10 @@ fn sort_image(threshold: u8, path: &str) -> Result<(), image::ImageError> {
         }
      }
 
-    img.save(format!("sorted-{}", path))
+    let path = Path::new(path);
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+
+    img.save(format!("sorted-{}", file_name))
 }
 
 fn main() {
