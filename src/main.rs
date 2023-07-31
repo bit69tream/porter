@@ -1,9 +1,64 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::path::Path;
+use eframe::egui;
 use image::{self, Pixel, Rgba};
 use std::env;
-use eframe::egui;
+use std::path::Path;
+
+enum SortBy {
+    Luminance,
+    Hue,
+    Saturation,
+}
+
+type SortingMethod = fn(Rgba<u8>) -> u16;
+
+fn luminance(pixel: &Rgba<u8>) -> u16 {
+    pixel.to_luma()[0] as u16
+}
+
+fn hue(pixel: &Rgba<u8>) -> u16 {
+    let red = pixel[0] as f32;
+    let green = pixel[1] as f32;
+    let blue = pixel[2] as f32;
+
+    let min = blue.min(red.min(green));
+    let max = blue.max(red.max(green));
+
+    if max == min {
+        return 0;
+    }
+
+    let hue: f32 = if max == red {
+        (green - blue) / (max - min)
+    } else if max == green {
+        2.0 + (blue - red) / (max - min)
+    } else if max == blue {
+        4.0 + (red - green) / (max - min)
+    } else {
+        panic!("how?");
+    } * 60.0;
+
+    (if hue < 0.0 { hue + 360.0 } else { hue }) as u16
+}
+
+fn saturation(pixel: &Rgba<u8>) -> u16 {
+    let red = pixel[0] as f32 / 255.0;
+    let green = pixel[1] as f32 / 255.0;
+    let blue = pixel[2] as f32 / 255.0;
+
+    let min = blue.min(red.min(green));
+    let max = blue.max(red.max(green));
+
+    if max == min {
+        return 0;
+    }
+
+    let luminance = (max + min) / 2.0;
+    let saturation = 1.0 - ((2.0 * luminance) - 1.0).abs();
+
+    (saturation * 255.0) as u16
+}
 
 fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
     let mut result: Vec<(usize, usize)> = Vec::new();
@@ -25,7 +80,11 @@ fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
     result
 }
 
-fn sort_image(lower_threshold: u8, higher_threshold: u8, path: &str) -> Result<(), image::ImageError> {
+fn sort_image(
+    lower_threshold: u8,
+    higher_threshold: u8,
+    path: &str,
+) -> Result<(), image::ImageError> {
     let mut img = image::open(path)?.into_rgba8();
     let (width, height) = img.dimensions();
 
@@ -55,7 +114,7 @@ fn sort_image(lower_threshold: u8, higher_threshold: u8, path: &str) -> Result<(
                 img.put_pixel(xi as u32, yi, pixels[i]);
             }
         }
-     }
+    }
 
     let path = Path::new(path);
     let file_name = path.file_name().unwrap().to_str().unwrap();
@@ -77,10 +136,18 @@ fn main() {
         std::process::exit(1);
     }
 
-    let lower_threshold = args.first().expect("ERROR: please provide lower threshold (from 0 to 255) as a first argument").parse::<u8>().expect("ERROR: threshold must be in the range from 0 to 255");
+    let lower_threshold = args
+        .first()
+        .expect("ERROR: please provide lower threshold (from 0 to 255) as a first argument")
+        .parse::<u8>()
+        .expect("ERROR: threshold must be in the range from 0 to 255");
     args.remove(0);
 
-    let higher_threshold = args.first().expect("ERROR: please provide higher threshold (from 0 to 255) as a second argument").parse::<u8>().expect("ERROR: threshold must be in the range from 0 to 255");
+    let higher_threshold = args
+        .first()
+        .expect("ERROR: please provide higher threshold (from 0 to 255) as a second argument")
+        .parse::<u8>()
+        .expect("ERROR: threshold must be in the range from 0 to 255");
     args.remove(0);
 
     if lower_threshold > higher_threshold {
@@ -93,12 +160,6 @@ fn main() {
             eprintln!("ERROR: Failed to sort image {}.", &path);
         }
     }
-}
-
-enum SortBy {
-    Luminance,
-    Hue,
-    Saturation
 }
 
 fn gui_main() -> Result<(), eframe::Error> {
@@ -121,43 +182,50 @@ fn gui_main() -> Result<(), eframe::Error> {
             // ui.style_mut().override_font_id = Some(egui::FontId::new(16.0, egui::FontFamily::Proportional));
 
             ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::default().with_cross_align(egui::Align::LEFT), |ui| {
-                    ui.horizontal(|ui| {
-                        let mut new_lower_threshold: u8 = lower_threshold;
-                        ui.label("Lower threshold: ");
-                        ui.add(egui::Slider::new(&mut new_lower_threshold, 0..=255));
-                        lower_threshold = new_lower_threshold.clamp(0, higher_threshold);
+                ui.with_layout(
+                    egui::Layout::default().with_cross_align(egui::Align::LEFT),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            let mut new_lower_threshold: u8 = lower_threshold;
+                            ui.label("Lower threshold: ");
+                            ui.add(egui::Slider::new(&mut new_lower_threshold, 0..=255));
+                            lower_threshold = new_lower_threshold.clamp(0, higher_threshold);
 
-                        ui.separator();
+                            ui.separator();
 
-                        let mut new_higher_threshold: u8 = higher_threshold;
-                        ui.label("Higher threshold: ");
-                        ui.add(egui::Slider::new(&mut new_higher_threshold, 0..=255));
-                        higher_threshold = new_higher_threshold.clamp(lower_threshold, 255);
-                    });
-                });
+                            let mut new_higher_threshold: u8 = higher_threshold;
+                            ui.label("Higher threshold: ");
+                            ui.add(egui::Slider::new(&mut new_higher_threshold, 0..=255));
+                            higher_threshold = new_higher_threshold.clamp(lower_threshold, 255);
+                        });
+                    },
+                );
 
-                ui.with_layout(egui::Layout::default().with_cross_align(egui::Align::RIGHT), |ui| {
-                    ui.horizontal(|ui| {
-                        let luminance_button = ui.add(egui::Button::new("Luminance"));
-                        let hue_button = ui.add(egui::Button::new("Hue"));
-                        let saturation_button = ui.add(egui::Button::new("Saturation"));
+                ui.with_layout(
+                    egui::Layout::default().with_cross_align(egui::Align::RIGHT),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            let luminance_button = ui.add(egui::Button::new("Luminance"));
+                            let hue_button = ui.add(egui::Button::new("Hue"));
+                            let saturation_button = ui.add(egui::Button::new("Saturation"));
 
-                        if luminance_button.clicked() {
-                            sort_by = SortBy::Luminance;
-                        } else if hue_button.clicked() {
-                            sort_by = SortBy::Hue;
-                        } else if saturation_button.clicked() {
-                            sort_by = SortBy::Saturation;
-                        }
+                            if luminance_button.clicked() {
+                                sort_by = SortBy::Luminance;
+                            } else if hue_button.clicked() {
+                                sort_by = SortBy::Hue;
+                            } else if saturation_button.clicked() {
+                                sort_by = SortBy::Saturation;
+                            }
 
-                        match sort_by {
-                            SortBy::Luminance => luminance_button,
-                            SortBy::Hue => hue_button,
-                            SortBy::Saturation => saturation_button
-                        }.highlight();
-                    });
-                });
+                            match sort_by {
+                                SortBy::Luminance => luminance_button,
+                                SortBy::Hue => hue_button,
+                                SortBy::Saturation => saturation_button,
+                            }
+                            .highlight();
+                        });
+                    },
+                );
             });
         });
     })
