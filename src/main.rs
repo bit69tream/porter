@@ -11,7 +11,12 @@ enum SortBy {
     Saturation,
 }
 
-type SortingMethod = fn(Rgba<u8>) -> u16;
+fn threshold_upper_boundary(method: &SortBy) -> u16 {
+    match method {
+        SortBy::Luminance | SortBy::Saturation => 255,
+        SortBy::Hue => 360
+    }
+}
 
 fn luminance(pixel: &Rgba<u8>) -> u16 {
     pixel.to_luma()[0] as u16
@@ -81,24 +86,31 @@ fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
 }
 
 fn sort_image(
-    lower_threshold: u8,
-    higher_threshold: u8,
+    lower_threshold: u16,
+    higher_threshold: u16,
     path: &str,
+    sorting_method: &SortBy,
 ) -> Result<(), image::ImageError> {
     let mut img = image::open(path)?.into_rgba8();
     let (width, height) = img.dimensions();
 
+    let pixel_property = match sorting_method {
+        SortBy::Hue => hue,
+        SortBy::Saturation => saturation,
+        SortBy::Luminance => luminance,
+    };
+
     for yi in 0..height {
         let intervals = {
-            let mut luminance_bitmap: Vec<bool> = Vec::with_capacity(width as usize);
+            let mut pixel_bitmap: Vec<bool> = Vec::with_capacity(width as usize);
             for xi in 0..width {
                 let pixel = img.get_pixel(xi, yi);
-                let luminance = pixel.to_luma()[0];
+                let value = pixel_property(pixel);
                 let accepted_range = lower_threshold..=higher_threshold;
-                luminance_bitmap.push(accepted_range.contains(&luminance));
+                pixel_bitmap.push(accepted_range.contains(&value));
             }
 
-            into_intervals(luminance_bitmap)
+            into_intervals(pixel_bitmap)
         };
 
         for interval in intervals {
@@ -107,7 +119,7 @@ fn sort_image(
             for xi in start..end {
                 pixels.push(*img.get_pixel(xi as u32, yi));
             }
-            pixels.sort_by(|a, b| a.to_luma()[0].cmp(&b.to_luma()[0]));
+            pixels.sort_by(|a, b| pixel_property(&a).cmp(&pixel_property(&b)));
 
             for i in 0..pixels.len() {
                 let xi = start + i;
@@ -139,14 +151,14 @@ fn main() {
     let lower_threshold = args
         .first()
         .expect("ERROR: please provide lower threshold (from 0 to 255) as a first argument")
-        .parse::<u8>()
+        .parse::<u16>()
         .expect("ERROR: threshold must be in the range from 0 to 255");
     args.remove(0);
 
     let higher_threshold = args
         .first()
         .expect("ERROR: please provide higher threshold (from 0 to 255) as a second argument")
-        .parse::<u8>()
+        .parse::<u16>()
         .expect("ERROR: threshold must be in the range from 0 to 255");
     args.remove(0);
 
@@ -156,7 +168,7 @@ fn main() {
     }
 
     for path in args {
-        if sort_image(lower_threshold, higher_threshold, &path).is_err() {
+        if sort_image(lower_threshold, higher_threshold, &path, &SortBy::Luminance).is_err() {
             eprintln!("ERROR: Failed to sort image {}.", &path);
         }
     }
@@ -173,8 +185,8 @@ fn gui_main() -> Result<(), eframe::Error> {
         ..Default::default()
     };
 
-    let mut lower_threshold: u8 = 0;
-    let mut higher_threshold: u8 = 255;
+    let mut lower_threshold: u16 = 0;
+    let mut higher_threshold: u16 = 255;
     let mut sort_by: SortBy = SortBy::Luminance;
 
     eframe::run_simple_native("Porter", options, move |ctx, _frame| {
@@ -186,17 +198,19 @@ fn gui_main() -> Result<(), eframe::Error> {
                     egui::Layout::default().with_cross_align(egui::Align::LEFT),
                     |ui| {
                         ui.horizontal(|ui| {
-                            let mut new_lower_threshold: u8 = lower_threshold;
+                            let upper_boundary = threshold_upper_boundary(&sort_by);
+
+                            let mut new_lower_threshold = lower_threshold;
                             ui.label("Lower threshold: ");
-                            ui.add(egui::Slider::new(&mut new_lower_threshold, 0..=255));
+                            ui.add(egui::Slider::new(&mut new_lower_threshold, 0..=upper_boundary));
                             lower_threshold = new_lower_threshold.clamp(0, higher_threshold);
 
                             ui.separator();
 
-                            let mut new_higher_threshold: u8 = higher_threshold;
+                            let mut new_higher_threshold = higher_threshold;
                             ui.label("Higher threshold: ");
-                            ui.add(egui::Slider::new(&mut new_higher_threshold, 0..=255));
-                            higher_threshold = new_higher_threshold.clamp(lower_threshold, 255);
+                            ui.add(egui::Slider::new(&mut new_higher_threshold, 0..=upper_boundary));
+                            higher_threshold = new_higher_threshold.clamp(lower_threshold, upper_boundary);
                         });
                     },
                 );
