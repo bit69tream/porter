@@ -25,7 +25,7 @@ fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
     result
 }
 
-fn sort_image(threshold: u8, path: &str) -> Result<(), image::ImageError> {
+fn sort_image(lower_threshold: u8, higher_threshold: u8, path: &str) -> Result<(), image::ImageError> {
     let mut img = image::open(path)?.into_rgba8();
     let (width, height) = img.dimensions();
 
@@ -35,7 +35,8 @@ fn sort_image(threshold: u8, path: &str) -> Result<(), image::ImageError> {
             for xi in 0..width {
                 let pixel = img.get_pixel(xi, yi);
                 let luminance = pixel.to_luma()[0];
-                luminance_bitmap.push(luminance > threshold);
+                let accepted_range = lower_threshold..=higher_threshold;
+                luminance_bitmap.push(accepted_range.contains(&luminance));
             }
 
             into_intervals(luminance_bitmap)
@@ -71,16 +72,24 @@ fn main() {
         } else {
             std::process::exit(0);
         }
-    } else if args.len() < 2 {
-        eprintln!("USAGE: porter <threshold> [images]");
+    } else if args.len() < 3 {
+        eprintln!("USAGE: porter <lower threshold> <higher threshold> [images]");
         std::process::exit(1);
     }
 
-    let threshold = args.first().expect("ERROR: please provide threshold (from 0 to 255) as a first argument").parse::<u8>().expect("ERROR: threshold must be in the range from 0 to 255");
+    let lower_threshold = args.first().expect("ERROR: please provide lower threshold (from 0 to 255) as a first argument").parse::<u8>().expect("ERROR: threshold must be in the range from 0 to 255");
     args.remove(0);
 
+    let higher_threshold = args.first().expect("ERROR: please provide higher threshold (from 0 to 255) as a second argument").parse::<u8>().expect("ERROR: threshold must be in the range from 0 to 255");
+    args.remove(0);
+
+    if lower_threshold > higher_threshold {
+        eprintln!("ERROR: lower threshold cannot be bigger than a higher threshold.");
+        std::process::exit(1);
+    }
+
     for path in args {
-        if sort_image(threshold, &path).is_err() {
+        if sort_image(lower_threshold, higher_threshold, &path).is_err() {
             eprintln!("ERROR: Failed to sort image {}.", &path);
         }
     }
