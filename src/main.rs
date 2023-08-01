@@ -14,7 +14,7 @@ enum SortBy {
 fn threshold_upper_boundary(method: &SortBy) -> u16 {
     match method {
         SortBy::Luminance | SortBy::Saturation => 255,
-        SortBy::Hue => 360
+        SortBy::Hue => 360,
     }
 }
 
@@ -143,23 +143,37 @@ fn main() {
         } else {
             std::process::exit(0);
         }
-    } else if args.len() < 3 {
-        eprintln!("USAGE: porter <lower threshold> <higher threshold> [images]");
+    } else if args.len() < 4 {
+        eprintln!("USAGE: porter <l/h/s> <lower threshold> <higher threshold> [images]");
         std::process::exit(1);
     }
 
+    let sorting_method = {
+        let arg = args.first().expect("ERROR: please choose one of the methods of sorting (l for luminance, h for hue and s for saturation) as a first argument");
+        match arg.as_str() {
+            "l" => SortBy::Luminance,
+            "h" => SortBy::Hue,
+            "s" => SortBy::Saturation,
+            _ => {
+                eprintln!("ERROR: sorting method must be one of the following: l (luminance), h (hue) or s (saturation)");
+                std::process::exit(1);
+            }
+        }
+    };
+    args.remove(0);
+
     let lower_threshold = args
         .first()
-        .expect("ERROR: please provide lower threshold (from 0 to 255) as a first argument")
+        .expect("ERROR: please provide lower threshold as a second argument")
         .parse::<u16>()
-        .expect("ERROR: threshold must be in the range from 0 to 255");
+        .expect("ERROR: threshold must be an integer");
     args.remove(0);
 
     let higher_threshold = args
         .first()
-        .expect("ERROR: please provide higher threshold (from 0 to 255) as a second argument")
+        .expect("ERROR: please provide higher threshold as a third argument")
         .parse::<u16>()
-        .expect("ERROR: threshold must be in the range from 0 to 255");
+        .expect("ERROR: threshold must be an integer");
     args.remove(0);
 
     if lower_threshold > higher_threshold {
@@ -168,7 +182,7 @@ fn main() {
     }
 
     for path in args {
-        if sort_image(lower_threshold, higher_threshold, &path, &SortBy::Luminance).is_err() {
+        if sort_image(lower_threshold, higher_threshold, &path, &sorting_method).is_err() {
             eprintln!("ERROR: Failed to sort image {}.", &path);
         }
     }
@@ -202,15 +216,22 @@ fn gui_main() -> Result<(), eframe::Error> {
 
                             let mut new_lower_threshold = lower_threshold;
                             ui.label("Lower threshold: ");
-                            ui.add(egui::Slider::new(&mut new_lower_threshold, 0..=upper_boundary));
+                            ui.add(egui::Slider::new(
+                                &mut new_lower_threshold,
+                                0..=upper_boundary,
+                            ));
                             lower_threshold = new_lower_threshold.clamp(0, higher_threshold);
 
                             ui.separator();
 
                             let mut new_higher_threshold = higher_threshold;
                             ui.label("Higher threshold: ");
-                            ui.add(egui::Slider::new(&mut new_higher_threshold, 0..=upper_boundary));
-                            higher_threshold = new_higher_threshold.clamp(lower_threshold, upper_boundary);
+                            ui.add(egui::Slider::new(
+                                &mut new_higher_threshold,
+                                0..=upper_boundary,
+                            ));
+                            higher_threshold =
+                                new_higher_threshold.clamp(lower_threshold, upper_boundary);
                         });
                     },
                 );
