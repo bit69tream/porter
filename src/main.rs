@@ -139,7 +139,7 @@ fn main() {
             std::process::exit(0);
         }
     } else if args.len() < 4 {
-        eprintln!("USAGE: porter <l/h/s> <lower threshold> <higher threshold> [images]");
+        eprintln!("USAGE: psorter <l/h/s> <lower threshold> <higher threshold> [images]");
         std::process::exit(1);
     }
 
@@ -279,7 +279,7 @@ fn gui_main() -> Result<(), eframe::Error> {
     let mut changed = true;
     let mut image_name = "placeholder".to_string();
 
-    eframe::run_simple_native("Porter", options, move |ctx, _frame| {
+    eframe::run_simple_native("PSORTER", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
             if texture.is_none() {
                 texture = Some(ctx.load_texture(&image_name, image.clone(), Default::default()));

@@ -1,5 +1,5 @@
-# PORTER
-Pixel sORTER
+# PSORTER
+Pixel SORTER
 
 ![preview](./preview.png)
 
