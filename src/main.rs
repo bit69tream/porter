@@ -188,6 +188,44 @@ fn main() {
     }
 }
 
+fn load_image_from_path(path: &str) -> Result<egui::ColorImage, image::ImageError> {
+    let image = image::io::Reader::open(path)?.decode()?;
+    let size = [image.width() as _, image.height() as _];
+    let image_buffer = image.to_rgba8();
+    let pixels = image_buffer.as_flat_samples();
+    Ok(egui::ColorImage::from_rgba_unmultiplied(
+        size,
+        pixels.as_slice(),
+    ))
+}
+
+// TODO: return a proper error
+fn open_image() -> Option<(egui::ColorImage, String)> {
+    let picked_path = if let Some(path) = rfd::FileDialog::new().pick_file() {
+        path.display().to_string()
+    } else {
+        return None;
+    };
+
+    let image = match load_image_from_path(&picked_path) {
+        Ok(new_image) => new_image,
+        Err(_) => return None,
+    };
+
+    let picked_path = Path::new(&picked_path);
+
+    Some((
+        image,
+        // all of this just to mimic `basename`
+        picked_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
+    ))
+}
+
 fn gui_main() -> Result<(), eframe::Error> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
