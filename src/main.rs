@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui;
-use image::{self, Pixel, Rgba};
+use image;
 use std::env;
 use std::path::Path;
 
@@ -18,14 +18,14 @@ fn threshold_upper_boundary(method: &SortBy) -> u16 {
     }
 }
 
-fn luminance(pixel: &Rgba<u8>) -> u16 {
-    pixel.to_luma()[0] as u16
+fn luminance(pixel: &egui::Color32) -> u16 {
+    ((pixel.r() as u16) + (pixel.g() as u16) + (pixel.b() as u16)) / 3
 }
 
-fn hue(pixel: &Rgba<u8>) -> u16 {
-    let red = pixel[0] as f32;
-    let green = pixel[1] as f32;
-    let blue = pixel[2] as f32;
+fn hue(pixel: &egui::Color32) -> u16 {
+    let red = pixel.r() as f32;
+    let green = pixel.g() as f32;
+    let blue = pixel.b() as f32;
 
     let min = blue.min(red.min(green));
     let max = blue.max(red.max(green));
@@ -47,10 +47,10 @@ fn hue(pixel: &Rgba<u8>) -> u16 {
     (if hue < 0.0 { hue + 360.0 } else { hue }) as u16
 }
 
-fn saturation(pixel: &Rgba<u8>) -> u16 {
-    let red = pixel[0] as f32 / 255.0;
-    let green = pixel[1] as f32 / 255.0;
-    let blue = pixel[2] as f32 / 255.0;
+fn saturation(pixel: &egui::Color32) -> u16 {
+    let red = pixel.r() as f32 / 255.0;
+    let green = pixel.g() as f32 / 255.0;
+    let blue = pixel.b() as f32 / 255.0;
 
     let min = blue.min(red.min(green));
     let max = blue.max(red.max(green));
@@ -88,11 +88,11 @@ fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
 fn sort_image(
     lower_threshold: u16,
     higher_threshold: u16,
-    path: &str,
+    image: &mut egui::ColorImage,
     sorting_method: &SortBy,
-) -> Result<(), image::ImageError> {
-    let mut img = image::open(path)?.into_rgba8();
-    let (width, height) = img.dimensions();
+) {
+    let width = image.width();
+    let height = image.height();
 
     let pixel_property = match sorting_method {
         SortBy::Hue => hue,
@@ -104,8 +104,8 @@ fn sort_image(
         let intervals = {
             let mut pixel_bitmap: Vec<bool> = Vec::with_capacity(width as usize);
             for xi in 0..width {
-                let pixel = img.get_pixel(xi, yi);
-                let value = pixel_property(pixel);
+                let pixel: egui::Color32 = image.pixels[yi * width + xi];
+                let value = pixel_property(&pixel);
                 let accepted_range = lower_threshold..=higher_threshold;
                 pixel_bitmap.push(accepted_range.contains(&value));
             }
@@ -115,23 +115,18 @@ fn sort_image(
 
         for interval in intervals {
             let (start, end) = interval;
-            let mut pixels: Vec<Rgba<u8>> = Vec::with_capacity(end - start);
+            let mut pixels: Vec<egui::Color32> = Vec::with_capacity(end - start);
             for xi in start..end {
-                pixels.push(*img.get_pixel(xi as u32, yi));
+                pixels.push(image.pixels[yi * width + xi]);
             }
             pixels.sort_by(|a, b| pixel_property(&a).cmp(&pixel_property(&b)));
 
             for i in 0..pixels.len() {
                 let xi = start + i;
-                img.put_pixel(xi as u32, yi, pixels[i]);
+                image.pixels[yi * width + xi] = pixels[i];
             }
         }
     }
-
-    let path = Path::new(path);
-    let file_name = path.file_name().unwrap().to_str().unwrap();
-
-    img.save(format!("sorted-{}", file_name))
 }
 
 fn main() {
@@ -182,9 +177,31 @@ fn main() {
     }
 
     for path in args {
-        if sort_image(lower_threshold, higher_threshold, &path, &sorting_method).is_err() {
-            eprintln!("ERROR: Failed to sort image {}.", &path);
-        }
+        let mut image = match load_image_from_path(&path) {
+            Ok(new_image) => new_image,
+            Err(e) => {
+                eprintln!("ERROR: cannot load image {}: {}", path, e);
+                std::process::exit(1);
+            }
+        };
+
+        sort_image(
+            lower_threshold,
+            higher_threshold,
+            &mut image,
+            &sorting_method,
+        );
+
+        let path = Path::new(&path);
+        let new_file_name = format!("sorted-{}", path.file_name().unwrap().to_str().unwrap());
+        image::save_buffer(
+            &new_file_name,
+            image.as_raw(),
+            image.width() as u32,
+            image.height() as u32,
+            image::ColorType::Rgba8,
+        )
+        .expect(&format!("ERROR: failed to save file {}", &new_file_name));
     }
 }
 
@@ -197,6 +214,23 @@ fn load_image_from_path(path: &str) -> Result<egui::ColorImage, image::ImageErro
         size,
         pixels.as_slice(),
     ))
+}
+
+fn save_image(image: &egui::ColorImage) {
+    let picked_path = if let Some(path) = rfd::FileDialog::new().save_file() {
+        path.display().to_string()
+    } else {
+        return;
+    };
+
+    image::save_buffer(
+        &picked_path,
+        image.as_raw(),
+        image.width() as u32,
+        image.height() as u32,
+        image::ColorType::Rgba8,
+    )
+    .expect(&format!("ERROR: failed to save file {}", &picked_path));
 }
 
 // TODO: return a proper error
@@ -240,10 +274,17 @@ fn gui_main() -> Result<(), eframe::Error> {
     let mut lower_threshold: u16 = 0;
     let mut higher_threshold: u16 = 255;
     let mut sort_by: SortBy = SortBy::Luminance;
+    let mut texture: Option<egui::TextureHandle> = None;
+    let mut image = egui::ColorImage::new([512, 512], egui::Color32::TRANSPARENT);
+    let mut sorted_image = image.clone();
+    let mut changed = true;
+    let mut image_name = "placeholder".to_string();
 
     eframe::run_simple_native("Porter", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // ui.style_mut().override_font_id = Some(egui::FontId::new(16.0, egui::FontFamily::Proportional));
+            if texture.is_none() {
+                texture = Some(ctx.load_texture(&image_name, image.clone(), Default::default()));
+            }
 
             ui.horizontal(|ui| {
                 ui.with_layout(
@@ -254,20 +295,26 @@ fn gui_main() -> Result<(), eframe::Error> {
 
                             let mut new_lower_threshold = lower_threshold;
                             ui.label("Lower threshold: ");
-                            ui.add(egui::Slider::new(
-                                &mut new_lower_threshold,
-                                0..=upper_boundary,
-                            ));
+                            changed = ui
+                                .add(egui::Slider::new(
+                                    &mut new_lower_threshold,
+                                    0..=upper_boundary,
+                                ))
+                                .changed()
+                                || changed;
                             lower_threshold = new_lower_threshold.clamp(0, higher_threshold);
 
                             ui.separator();
 
                             let mut new_higher_threshold = higher_threshold;
                             ui.label("Higher threshold: ");
-                            ui.add(egui::Slider::new(
-                                &mut new_higher_threshold,
-                                0..=upper_boundary,
-                            ));
+                            changed = ui
+                                .add(egui::Slider::new(
+                                    &mut new_higher_threshold,
+                                    0..=upper_boundary,
+                                ))
+                                .changed()
+                                || changed;
                             higher_threshold =
                                 new_higher_threshold.clamp(lower_threshold, upper_boundary);
                         });
@@ -278,16 +325,39 @@ fn gui_main() -> Result<(), eframe::Error> {
                     egui::Layout::default().with_cross_align(egui::Align::RIGHT),
                     |ui| {
                         ui.horizontal(|ui| {
+                            if ui.button("Open file…").clicked() {
+                                if let Some((new_image, new_image_name)) = open_image() {
+                                    texture = Some(ctx.load_texture(
+                                        &new_image_name,
+                                        new_image.clone(),
+                                        Default::default(),
+                                    ));
+                                    image = new_image;
+                                    image_name = new_image_name;
+
+                                    changed = true;
+                                }
+                            }
+
+                            if ui.button("Save file…").clicked() {
+                                save_image(&sorted_image);
+                            }
+
+                            ui.separator();
+
                             let luminance_button = ui.add(egui::Button::new("Luminance"));
                             let hue_button = ui.add(egui::Button::new("Hue"));
                             let saturation_button = ui.add(egui::Button::new("Saturation"));
 
                             if luminance_button.clicked() {
                                 sort_by = SortBy::Luminance;
+                                changed = true;
                             } else if hue_button.clicked() {
                                 sort_by = SortBy::Hue;
+                                changed = true;
                             } else if saturation_button.clicked() {
                                 sort_by = SortBy::Saturation;
+                                changed = true;
                             }
 
                             match sort_by {
@@ -300,6 +370,26 @@ fn gui_main() -> Result<(), eframe::Error> {
                     },
                 );
             });
+
+            if changed {
+                changed = false;
+                sorted_image = image.clone();
+                sort_image(
+                    lower_threshold,
+                    higher_threshold,
+                    &mut sorted_image,
+                    &sort_by,
+                );
+
+                texture =
+                    Some(ctx.load_texture(&image_name, sorted_image.clone(), Default::default()));
+            }
+
+            if let Some(texture) = texture.as_ref() {
+                ui.image(texture, ui.available_size());
+            } else {
+                ui.spinner();
+            }
         });
     })
 }
