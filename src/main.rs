@@ -266,7 +266,6 @@ fn gui_main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(1024.0, 1024.0)),
         default_theme: eframe::Theme::Light,
-        resizable: false,
         follow_system_theme: true,
         ..Default::default()
     };
