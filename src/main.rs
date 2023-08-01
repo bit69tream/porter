@@ -65,6 +65,11 @@ fn saturation(pixel: &egui::Color32) -> u16 {
     (saturation * 255.0) as u16
 }
 
+fn basename(path: &str) -> String {
+    let path = Path::new(&path);
+    path.file_name().unwrap().to_str().unwrap().to_string()
+}
+
 fn into_intervals(bitmap: Vec<bool>) -> Vec<(usize, usize)> {
     let mut result: Vec<(usize, usize)> = Vec::new();
     let mut interval_start: Option<usize> = None;
@@ -192,8 +197,7 @@ fn main() {
             &sorting_method,
         );
 
-        let path = Path::new(&path);
-        let new_file_name = format!("sorted-{}", path.file_name().unwrap().to_str().unwrap());
+        let new_file_name = format!("sorted-{}", basename(&path));
         image::save_buffer(
             &new_file_name,
             image.as_raw(),
@@ -240,34 +244,15 @@ fn save_image(image: &egui::ColorImage, name: &str) {
     .expect(&format!("ERROR: failed to save file {}", &picked_path));
 }
 
-// TODO: return a proper error
-fn open_image() -> Option<(egui::ColorImage, String)> {
-    let picked_path = if let Some(path) = rfd::FileDialog::new()
+fn pick_image() -> Option<String> {
+    if let Some(path) = rfd::FileDialog::new()
         .add_filter("Image Files", &IMAGE_EXTENSIONS)
         .pick_file()
     {
-        path.display().to_string()
+        Some(path.display().to_string())
     } else {
-        return None;
-    };
-
-    let image = match load_image_from_path(&picked_path) {
-        Ok(new_image) => new_image,
-        Err(_) => return None,
-    };
-
-    let picked_path = Path::new(&picked_path);
-
-    Some((
-        image,
-        // all of this just to mimic `basename`
-        picked_path
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string(),
-    ))
+        None
+    }
 }
 
 fn gui_main() -> Result<(), eframe::Error> {
@@ -288,6 +273,7 @@ fn gui_main() -> Result<(), eframe::Error> {
     let mut sorted_image = image.clone();
     let mut changed = true;
     let mut image_name = "placeholder".to_string();
+    let mut error_message: Option<String> = None;
 
     eframe::run_simple_native("PSORTER", options, move |ctx, _frame| {
         egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
@@ -331,16 +317,15 @@ fn gui_main() -> Result<(), eframe::Error> {
                     |ui| {
                         ui.horizontal(|ui| {
                             if ui.button("Open file…").clicked() {
-                                if let Some((new_image, new_image_name)) = open_image() {
-                                    texture = Some(ctx.load_texture(
-                                        &new_image_name,
-                                        new_image.clone(),
-                                        Default::default(),
-                                    ));
-                                    image = new_image;
-                                    image_name = new_image_name;
-
-                                    changed = true;
+                                if let Some(new_image_path) = pick_image() {
+                                    match load_image_from_path(&new_image_path) {
+                                        Ok(x) => {
+                                            image = x;
+                                            changed = true;
+                                            image_name = basename(&new_image_path);
+                                        }
+                                        Err(e) => error_message = Some(e.to_string()),
+                                    };
                                 }
                             }
 
@@ -416,5 +401,17 @@ fn gui_main() -> Result<(), eframe::Error> {
                 ui.spinner();
             }
         });
+
+        if error_message.is_some() {
+            egui::Window::new("Error")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label(error_message.as_ref().unwrap());
+                    if ui.button("Ok").clicked() {
+                        error_message = None;
+                    }
+                });
+        }
     })
 }
