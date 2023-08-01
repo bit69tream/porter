@@ -280,11 +280,7 @@ fn gui_main() -> Result<(), eframe::Error> {
     let mut image_name = "placeholder".to_string();
 
     eframe::run_simple_native("PSORTER", options, move |ctx, _frame| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if texture.is_none() {
-                texture = Some(ctx.load_texture(&image_name, image.clone(), Default::default()));
-            }
-
+        egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.with_layout(
                     egui::Layout::default().with_cross_align(egui::Align::LEFT),
@@ -369,6 +365,12 @@ fn gui_main() -> Result<(), eframe::Error> {
                     },
                 );
             });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if texture.is_none() {
+                texture = Some(ctx.load_texture(&image_name, image.clone(), Default::default()));
+            }
 
             if changed {
                 changed = false;
@@ -394,9 +396,12 @@ fn gui_main() -> Result<(), eframe::Error> {
                     (image.height() as f32) * scale,
                 );
 
-                ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
-                    ui.image(texture, image_size);
-                });
+                ui.with_layout(
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    |ui| {
+                        ui.image(texture, image_size);
+                    },
+                );
             } else {
                 ui.spinner();
             }
