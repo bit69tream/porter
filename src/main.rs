@@ -386,7 +386,18 @@ fn gui_main() -> Result<(), eframe::Error> {
             }
 
             if let Some(texture) = texture.as_ref() {
-                ui.image(texture, ui.available_size());
+                let available_space = ui.available_size();
+                let vertical_scale = available_space.y / (image.height() as f32);
+                let horizontal_scale = available_space.x / (image.width() as f32);
+                let scale = vertical_scale.min(horizontal_scale);
+                let image_size = egui::Vec2::new(
+                    (image.width() as f32) * scale,
+                    (image.height() as f32) * scale,
+                );
+
+                ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::LeftToRight), |ui| {
+                    ui.image(texture, image_size);
+                });
             } else {
                 ui.spinner();
             }
