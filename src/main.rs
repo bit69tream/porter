@@ -216,8 +216,15 @@ fn load_image_from_path(path: &str) -> Result<egui::ColorImage, image::ImageErro
     ))
 }
 
+const IMAGE_EXTENSIONS: [&'static str; 8] =
+    ["png", "jpg", "jpeg", "bmp", "ico", "tiff", "webp", "tga"];
+
 fn save_image(image: &egui::ColorImage, name: &str) {
-    let picked_path = if let Some(path) = rfd::FileDialog::new().set_file_name(name).save_file() {
+    let picked_path = if let Some(path) = rfd::FileDialog::new()
+        .set_file_name(name)
+        .add_filter("Image Files", &IMAGE_EXTENSIONS)
+        .save_file()
+    {
         path.display().to_string()
     } else {
         return;
@@ -235,7 +242,10 @@ fn save_image(image: &egui::ColorImage, name: &str) {
 
 // TODO: return a proper error
 fn open_image() -> Option<(egui::ColorImage, String)> {
-    let picked_path = if let Some(path) = rfd::FileDialog::new().pick_file() {
+    let picked_path = if let Some(path) = rfd::FileDialog::new()
+        .add_filter("Image Files", &IMAGE_EXTENSIONS)
+        .pick_file()
+    {
         path.display().to_string()
     } else {
         return None;
