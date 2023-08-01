@@ -216,8 +216,8 @@ fn load_image_from_path(path: &str) -> Result<egui::ColorImage, image::ImageErro
     ))
 }
 
-fn save_image(image: &egui::ColorImage) {
-    let picked_path = if let Some(path) = rfd::FileDialog::new().save_file() {
+fn save_image(image: &egui::ColorImage, name: &str) {
+    let picked_path = if let Some(path) = rfd::FileDialog::new().set_file_name(name).save_file() {
         path.display().to_string()
     } else {
         return;
@@ -335,7 +335,7 @@ fn gui_main() -> Result<(), eframe::Error> {
                             }
 
                             if ui.button("Save file…").clicked() {
-                                save_image(&sorted_image);
+                                save_image(&sorted_image, &image_name);
                             }
 
                             ui.separator();
